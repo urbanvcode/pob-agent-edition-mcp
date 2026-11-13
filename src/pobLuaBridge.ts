@@ -155,6 +155,14 @@ export interface SearchedNode {
 }
 
 /** list_specs / create_spec / select_spec / delete_spec / rename_spec */
+export type ItemTestStats = Record<string, number>;
+export interface ItemTestReport {
+  slot: string;
+  base: ItemTestStats;
+  current?: { name?: string; baseName?: string; rarity?: string };
+  results: Array<{ ok: boolean; error?: string; stats?: ItemTestStats; name?: string; baseName?: string; rarity?: string }>;
+}
+
 export interface SpecEntry {
   index: number;
   title: string;
@@ -953,6 +961,13 @@ async setTree(params: {
     if (!res.ok) throw new Error(res.error || 'generate_weighted_trade_query failed');
     const query = typeof res.query === 'string' ? JSON.parse(res.query) : res.query;
     return { query, warning: typeof res.warning === 'string' ? res.warning : undefined };
+  }
+
+  /** Simulate candidate items in a slot (nothing is equipped). */
+  async testItems(slot: string, items: string[]): Promise<ItemTestReport> {
+    const res = await this.send({ action: 'test_items', params: { slot, items } });
+    if (!res.ok) throw new Error(res.error || 'test_items failed');
+    return res.result as ItemTestReport;
   }
 
   async createSpec(params?: { title?: string; copyFrom?: number; activate?: boolean }): Promise<SpecList> {

@@ -54,6 +54,8 @@ export class RateGovernor {
   private readonly history = new Map<string, number[]>();
   private readonly rules = new Map<string, RateRule[]>();
   private blockedUntil = 0;
+  /** Latest server-reported hit count per policy and window length (seconds). */
+  private readonly serverState = new Map<string, Map<number, { hits: number; at: number }>>();
 
   constructor(private readonly now: () => number = () => Date.now(), private readonly headroom = 1) {}
 
@@ -75,14 +77,26 @@ export class RateGovernor {
     const now = this.now();
     let wait = Math.max(0, this.blockedUntil - now);
     const list = this.stamps(policy);
+    const reported = this.serverState.get(policy);
     for (const rule of this.rulesFor(policy)) {
       const allowed = Math.max(1, rule.max - this.headroom);
-      const windowStart = now - rule.periodSec * 1000;
+      const periodMs = rule.periodSec * 1000;
+      const windowStart = now - periodMs;
       const inWindow = list.filter((t) => t > windowStart);
       if (inWindow.length >= allowed) {
         // The request that must age out of the window before we may send.
         const mustExpire = inWindow[inWindow.length - allowed];
-        wait = Math.max(wait, mustExpire + rule.periodSec * 1000 - now + 50);
+        wait = Math.max(wait, mustExpire + periodMs - now + 50);
+      }
+      // Hits the server counted in this same window (includes browser use).
+      // Only that tier is affected; a 6-hour count never blocks the 10s tier.
+      const srv = reported?.get(rule.periodSec);
+      if (srv && now - srv.at < periodMs) {
+        const since = list.filter((t) => t > srv.at).length;
+        if (srv.hits + since >= allowed && srv.hits > inWindow.length) {
+          // Unknown exact times: assume they expire one full window after the report.
+          wait = Math.max(wait, srv.at + periodMs - now + 50);
+        }
       }
     }
     return wait;
@@ -102,13 +116,15 @@ export class RateGovernor {
       const rules = parseRules(headers.get(`X-Rate-Limit-${name}`));
       const state = parseState(headers.get(`X-Rate-Limit-${name}-State`));
       learned.push(...rules);
+      let reported = this.serverState.get(policy);
+      if (!reported) { reported = new Map(); this.serverState.set(policy, reported); }
       for (const s of state) {
         if (s.restrictedSec > 0) this.blockedUntil = Math.max(this.blockedUntil, now + s.restrictedSec * 1000);
-        // Adopt the server's count when it has seen more requests than we sent.
-        const list = this.stamps(policy);
-        const ours = list.filter((t) => t > now - s.periodSec * 1000).length;
-        for (let i = ours; i < s.hits; i++) list.push(now);
-        list.sort((a, b) => a - b);
+        // Remember the server's count per window (kept separate per tier).
+        if (s.periodSec > 0) {
+          const prev = reported.get(s.periodSec);
+          reported.set(s.periodSec, { hits: Math.max(s.hits, prev && now - prev.at < s.periodSec * 1000 && prev.at === now ? prev.hits : 0), at: now });
+        }
       }
     }
     if (learned.length) this.rules.set(policy, learned);

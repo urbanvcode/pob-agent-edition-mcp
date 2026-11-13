@@ -24,6 +24,7 @@ import { handleAnalyzeDefenses, handleSuggestOptimalNodes, handleOptimizeTree } 
 import { handleAnalyzeItems, handleOptimizeSkillLinks, handleCreateBudgetBuild } from "../handlers/advancedOptimizationHandlers.js";
 import { handleGetConfig, handleSetConfig, handleSetEnemyStats, handleSaveConfigPreset, handleLoadConfigPreset, handleListConfigPresets } from "../handlers/configHandlers.js";
 import { handleValidateBuild } from "../handlers/validationHandlers.js";
+import { handlePlanUpgrades, type UpgradeArgs } from "../handlers/upgradePlanHandler.js";
 import { handleLiveStatus, handleLiveOpenBuild, handleLiveSaveBuild, handleLiveSetView } from "../handlers/liveHandlers.js";
 import { handleExportBuild, handleSaveTree, handleSnapshotBuild, handleListSnapshots, handleRestoreSnapshot, handleExportBuildSummary } from "../handlers/exportHandlers.js";
 import { handleAnalyzeSkillLinks, handleSuggestSupportGems, handleCompareGemSetups, handleValidateGemQuality, handleFindOptimalLinks, handleGemUpgradePath } from "../handlers/skillGemHandlers.js";
@@ -552,6 +553,11 @@ export async function routeToolCall(
       };
       return await handleSearchTradeItems(tradeContext, args as Parameters<typeof handleSearchTradeItems>[1]);
     }
+
+    case "plan_upgrades":
+      if (!deps.tradeClient) throw new Error('Trade API is not enabled. Set POE_TRADE_ENABLED=true to enable.');
+      if (!args?.league) throw new Error('plan_upgrades requires league (use get_leagues if unsure)');
+      return await handlePlanUpgrades({ tradeClient: deps.tradeClient, ninjaClient: deps.ninjaClient, getLuaClient: deps.getLuaClient, ensureLuaClient: deps.ensureLuaClient }, args as unknown as UpgradeArgs);
 
     case "find_weighted_trade_items":
       if (!deps.tradeClient) throw new Error('Trade API is not enabled. Set POE_TRADE_ENABLED=true to enable.');

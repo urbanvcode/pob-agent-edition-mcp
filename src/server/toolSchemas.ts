@@ -1558,6 +1558,22 @@ export function getExportToolSchemas(): ToolSchema[] {
 export function getTradeToolSchemas(): ToolSchema[] {
   return [
     {
+      name: "plan_upgrades",
+      description: "Best tool for 'what cheap items improve my build?'. For each gear slot PoB builds its own weighted best-upgrade search, instant-buyout listings under the budget are fetched, every candidate is simulated in the current build (nothing is equipped) and results are ranked by improvement per chaos (DPS %, EHP %, life, resistances, with warnings for uncapped resists or unmet requirements). Uses about 2 trade requests per slot and stays inside the per-question trade budget. In PoB Agent Edition the results also appear in the Overview > Advisor card. Requires a loaded build and a POESESSID (PoB Agent Edition > Options).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          league: { type: "string", description: "Exact league name (get_leagues lists them)" },
+          budget_chaos: { type: "number", description: "Max price per item in chaos equivalent (default 50)" },
+          focus: { type: "string", enum: ["balanced", "dps", "defence"], description: "What to optimise (default balanced)" },
+          slots: { type: "array", items: { type: "string" }, description: "Gear slots to search (default Helmet, Body Armour, Gloves, Boots, Belt, Amulet, Ring 1; max 8)" },
+          per_slot: { type: "number", description: "Listings tested per slot (default 4, max 8)" },
+          max_results: { type: "number", description: "Upgrades to return (default 8)" },
+        },
+        required: ["league"],
+      },
+    },
+    {
       name: "find_weighted_trade_items",
       description: "Find build-specific best-in-slot listings using upstream PoB's native TradeQueryGenerator stat weights. Requires a loaded build, POE_TRADE_ENABLED=true, and POE_SESSION_ID (the official Trade API rejects anonymous weighted searches).",
       inputSchema: { type: "object", properties: { league: { type: "string" }, slot: { type: "string" }, options: { type: "object" }, limit: { type: "number" } }, required: ["league", "slot"] },

@@ -41,6 +41,7 @@ import type { ToolSchema } from "./server/toolSchemas.js";
 import { getToolSchemas, getLuaToolSchemas, getOptimizationToolSchemas, getConfigToolSchemas, getValidationToolSchemas, getExportToolSchemas, getSkillGemToolSchemas, getTradeToolSchemas, getPoeNinjaToolSchemas, getBuildGoalsToolSchemas } from "./server/toolSchemas.js";
 import { routeToolCall, type ToolRouterDependencies } from "./server/toolRouter.js";
 import { getPoeSessionId } from "./utils/poeSession.js";
+import { AGENT_GUIDE } from "./server/agentGuide.js";
 import { wrapWithTruncation, shouldTruncate } from "./server/responseUtils.js";
 
 class PoBMCPServer {
@@ -96,6 +97,7 @@ class PoBMCPServer {
           resources: {},
           tools: {},
         },
+        instructions: AGENT_GUIDE,
       }
     );
 
@@ -270,7 +272,7 @@ class PoBMCPServer {
         // authenticated session (the Trade API rejects anonymous weighted sums)
         const weightedAvailable = Boolean(getPoeSessionId())
           && this.luaClientManager.isEnabled();
-        tools.push(...getTradeToolSchemas().filter((tool) => tool.name !== 'find_weighted_trade_items' || weightedAvailable));
+        tools.push(...getTradeToolSchemas().filter((tool) => !['find_weighted_trade_items', 'plan_upgrades'].includes(tool.name) || weightedAvailable));
       }
 
       // Add poe.ninja API tools (always available)

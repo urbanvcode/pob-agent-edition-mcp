@@ -230,6 +230,55 @@ handlers.list_item_sets = op(BuildOps.list_item_sets, 'result')
 handlers.select_item_set = op(BuildOps.select_item_set, 'result')
 handlers.set_socket_group_enabled = op(BuildOps.set_socket_group_enabled, 'result')
 
+-- Test candidate items in a slot without equipping them: returns the build's
+-- key stats with each item swapped in, plus the current (base) stats.
+-- params: { slot = "Helmet", items = { "<PoB item text>", ... } }
+local TEST_FIELDS = {
+  'FullDPS', 'CombinedDPS', 'TotalDPS', 'TotalDotDPS', 'TotalEHP', 'Life', 'EnergyShield', 'Mana', 'ManaUnreserved',
+  'FireResist', 'ColdResist', 'LightningResist', 'ChaosResist', 'EffectiveSpellSuppressionChance',
+  'EvadeChance', 'BlockChance', 'Armour', 'Evasion', 'PhysicalMaximumHitTaken', 'ChaosMaximumHitTaken',
+  'EffectiveMovementSpeedMod', 'Str', 'Dex', 'Int', 'ReqStr', 'ReqDex', 'ReqInt',
+}
+local function pick(out)
+  local r = {}
+  for _, k in ipairs(TEST_FIELDS) do
+    local v = out and out[k]
+    if type(v) == 'number' and v == v and v ~= math.huge and v ~= -math.huge then r[k] = v end
+  end
+  return r
+end
+handlers.test_items = function(params)
+  if not build or not build.calcsTab or not build.itemsTab then return { ok = false, error = 'build not initialized' } end
+  local slotName = params.slot
+  if type(slotName) ~= 'string' or not build.itemsTab.slots[slotName] then return { ok = false, error = 'unknown slot: ' .. tostring(slotName) } end
+  if type(params.items) ~= 'table' then return { ok = false, error = 'items must be a list of item texts' } end
+  local calcFunc = build.calcsTab:GetMiscCalculator()
+  local okBase, base = pcall(calcFunc, {})
+  if not okBase then return { ok = false, error = 'base calculation failed: ' .. tostring(base) } end
+  local results = {}
+  for i, text in ipairs(params.items) do
+    local okItem, item = pcall(new, 'Item', text)
+    if not okItem or not item or not item.base then
+      results[i] = { ok = false, error = 'PoB could not read this item' }
+    else
+      local okCalc, out = pcall(calcFunc, { repSlotName = slotName, repItem = item })
+      if okCalc and type(out) == 'table' then
+        results[i] = { ok = true, stats = pick(out), name = item.title or item.name, baseName = item.baseName, rarity = item.rarity }
+      else
+        results[i] = { ok = false, error = 'calculation failed: ' .. tostring(out) }
+      end
+    end
+  end
+  local slot = build.itemsTab.slots[slotName]
+  local current = slot.selItemId and slot.selItemId > 0 and build.itemsTab.items[slot.selItemId] or nil
+  return { ok = true, result = {
+    slot = slotName,
+    base = pick(base),
+    current = current and { name = current.title or current.name, baseName = current.baseName, rarity = current.rarity } or nil,
+    results = results,
+  } }
+end
+
 handlers.evaluate_anoint_candidates = evaluate_anoint_candidates
 handlers.generate_weighted_trade_query = generate_weighted_trade_query
 

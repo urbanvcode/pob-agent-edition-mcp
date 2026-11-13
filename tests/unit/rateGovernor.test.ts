@@ -48,6 +48,26 @@ describe('RateGovernor', () => {
     expect(g.waitMs('search')).toBeGreaterThan(9000);
   });
 
+  it('does not let a long window count block a short window (real trade headers)', () => {
+    let now = 0;
+    const g = new RateGovernor(() => now);
+    g.record('search');
+    g.update('search', headers({
+      'X-Rate-Limit-Rules': 'Ip',
+      'X-Rate-Limit-Ip': '5:10:60,15:60:300,30:300:1800,600:21600:3600',
+      'X-Rate-Limit-Ip-State': '1:10:0,2:60:0,4:300:0,17:21600:0',
+    }));
+    now = 2000;
+    expect(g.waitMs('search')).toBe(0);
+    // ...but the 60s tier is honoured once the server says it is nearly full
+    g.update('search', headers({
+      'X-Rate-Limit-Rules': 'Ip',
+      'X-Rate-Limit-Ip': '5:10:60,15:60:300,30:300:1800,600:21600:3600',
+      'X-Rate-Limit-Ip-State': '1:10:0,14:60:0,14:300:0,30:21600:0',
+    }));
+    expect(g.waitMs('search')).toBeGreaterThan(50_000);
+  });
+
   it('pauses for a server restriction and Retry-After', () => {
     let now = 0;
     const g = new RateGovernor(() => now);
