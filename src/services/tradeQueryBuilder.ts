@@ -5,6 +5,18 @@ import {
   SearchOptions,
 } from '../types/tradeTypes.js';
 
+export type TradeOnlineStatus = 'available' | 'online' | 'onlineleague' | 'securable' | 'any';
+
+/**
+ * Default online-status filter for every trade query. Set
+ * POE_TRADE_ONLINE_STATUS=securable to restrict all searches to instant-buyout
+ * listings. Falls back to 'available' when unset or invalid.
+ */
+export function defaultOnlineStatus(): TradeOnlineStatus {
+  const v = (process.env.POE_TRADE_ONLINE_STATUS || '').trim().toLowerCase();
+  return (['available', 'online', 'onlineleague', 'securable', 'any'] as const).find(s => s === v) ?? 'available';
+}
+
 /**
  * Builder class for constructing Path of Exile Trade API queries
  *
@@ -19,7 +31,7 @@ import {
 export class TradeQueryBuilder {
   private query: TradeQuery = {
     query: {
-      status: { option: 'available' },
+      status: { option: defaultOnlineStatus() },
       filters: {},
     },
   };
@@ -423,7 +435,7 @@ export class TradeQueryBuilder {
       // Default to 'available' (both instant-buyout and in-person trade items).
       // Callers that want to restrict to instant-buyout-from-online-seller can
       // pass onlineStatus: 'securable' explicitly.
-      this.withOnlineStatus(options.onlineStatus ?? 'available');
+      this.withOnlineStatus(options.onlineStatus ?? defaultOnlineStatus());
     }
 
     // Note: We intentionally do NOT set sale_type filter here.

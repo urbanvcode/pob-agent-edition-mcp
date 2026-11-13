@@ -1,6 +1,6 @@
 import { wrapHandler } from '../utils/errorHandling.js';
 import { TradeApiClient } from '../services/tradeClient.js';
-import { TradeQueryBuilder } from '../services/tradeQueryBuilder.js';
+import { TradeQueryBuilder, defaultOnlineStatus } from '../services/tradeQueryBuilder.js';
 import type { TradeItem, TradeQuery } from '../types/tradeTypes.js';
 import { StatMapper } from '../services/statMapper.js';
 import { ItemRecommendationEngine } from '../services/itemRecommendationEngine.js';
@@ -23,6 +23,10 @@ export async function handleFindWeightedTradeItems(context: TradeContext & { get
     if (!client) throw new Error('Lua bridge not active. Load a build first.');
     const { query, warning } = await client.generateWeightedTradeQuery(args.slot, args.options);
     if (!query || typeof query !== 'object') throw new Error('PoB returned no trade query');
+    if (process.env.POE_TRADE_ONLINE_STATUS) {
+      const q = (query as TradeQuery).query as TradeQuery['query'] | undefined;
+      if (q) q.status = { option: defaultOnlineStatus() };
+    }
     const search = await context.tradeClient.searchItems(args.league, query as TradeQuery);
     if (!search.result?.length) return { content: [{ type: 'text' as const, text: `=== Weighted BIS Search (${args.league}, slot: ${args.slot}) ===\nNo items found.${warning ? `\nWarning: ${warning}` : ''}` }] };
     const items = await context.tradeClient.fetchItems(search.result.slice(0, Math.min(args.limit ?? 5, 10)), search.id);
@@ -202,7 +206,7 @@ export async function handleGetItemPrice(
     // Build query
     const builder = new TradeQueryBuilder()
       .withName(item_name)
-      .withOnlineStatus('available');
+      .withOnlineStatus(defaultOnlineStatus());
 
     if (item_type) {
       builder.withType(item_type);

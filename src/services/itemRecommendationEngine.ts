@@ -6,7 +6,7 @@
  */
 
 import { TradeApiClient } from './tradeClient.js';
-import { TradeQueryBuilder } from './tradeQueryBuilder.js';
+import { TradeQueryBuilder, defaultOnlineStatus } from './tradeQueryBuilder.js';
 import {
   ItemListing,
   TradeItem,
@@ -243,7 +243,7 @@ export class ItemRecommendationEngine {
     // Apply budget
     builder.withPriceRange(undefined, budget.maxPricePerItem);
 
-    builder.withOnlineStatus('available');
+    builder.withOnlineStatus(defaultOnlineStatus());
     builder.withSort('price', 'asc');
 
     return builder.build();
