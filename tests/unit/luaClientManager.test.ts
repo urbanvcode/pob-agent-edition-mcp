@@ -7,9 +7,10 @@ const start = jest.fn(async () => {});
 const stop = jest.fn(async () => {});
 const isAlive = jest.fn(() => true);
 const loadBuildXml = jest.fn(async () => ({}));
+const isLive = jest.fn(() => false);
 
 jest.mock('../../src/pobLuaBridge.js', () => ({
-  PoBLuaApiClient: jest.fn().mockImplementation(() => ({ start, stop, isAlive, loadBuildXml })),
+  PoBLuaApiClient: jest.fn().mockImplementation(() => ({ start, stop, isAlive, loadBuildXml, isLive })),
 }));
 
 import { LuaClientManager } from '../../src/server/luaClientManager.js';
@@ -31,8 +32,11 @@ function mockCalls(): BridgeOptions[] {
 
 describe('LuaClientManager.ensureClient', () => {
   const savedPobArgs = process.env.POB_ARGS;
+  const savedPobLive = process.env.POB_LIVE;
 
   beforeEach(() => {
+    // These tests cover the headless lifecycle; live mode is tested separately below.
+    process.env.POB_LIVE = 'off';
     start.mockReset();
     start.mockImplementation(async () => {});
     stop.mockReset();
@@ -47,6 +51,34 @@ describe('LuaClientManager.ensureClient', () => {
   afterEach(() => {
     if (savedPobArgs === undefined) delete process.env.POB_ARGS;
     else process.env.POB_ARGS = savedPobArgs;
+    if (savedPobLive === undefined) delete process.env.POB_LIVE;
+    else process.env.POB_LIVE = savedPobLive;
+  });
+
+  it('uses the live PoB window first and skips the headless bootstrap', async () => {
+    process.env.POB_LIVE = 'auto';
+    const manager = new LuaClientManager(true);
+    await manager.ensureClient();
+    expect(bridgeCtor()).toHaveBeenCalledTimes(1);
+    expect((bridgeCtor().mock.calls[0][0] as { livePort?: number }).livePort).toBe(31337);
+    expect(loadBuildXml).not.toHaveBeenCalled();
+  });
+
+  it('falls back to headless when no live window answers', async () => {
+    process.env.POB_LIVE = 'auto';
+    start.mockImplementationOnce(async () => { throw new Error('not running'); });
+    const manager = new LuaClientManager(true);
+    await manager.ensureClient();
+    expect(bridgeCtor()).toHaveBeenCalledTimes(2);
+    expect((bridgeCtor().mock.calls[1][0] as { livePort?: number }).livePort).toBeUndefined();
+    expect(loadBuildXml).toHaveBeenCalled();
+  });
+
+  it('refuses to fall back when POB_LIVE=only', async () => {
+    process.env.POB_LIVE = 'only';
+    start.mockImplementationOnce(async () => { throw new Error('not running'); });
+    const manager = new LuaClientManager(true);
+    await expect(manager.ensureClient()).rejects.toThrow(/Agent Edition/);
   });
 
   it('throws a clear error when the bridge is disabled', async () => {

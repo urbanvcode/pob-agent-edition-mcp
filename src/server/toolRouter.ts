@@ -24,6 +24,7 @@ import { handleAnalyzeDefenses, handleSuggestOptimalNodes, handleOptimizeTree } 
 import { handleAnalyzeItems, handleOptimizeSkillLinks, handleCreateBudgetBuild } from "../handlers/advancedOptimizationHandlers.js";
 import { handleGetConfig, handleSetConfig, handleSetEnemyStats, handleSaveConfigPreset, handleLoadConfigPreset, handleListConfigPresets } from "../handlers/configHandlers.js";
 import { handleValidateBuild } from "../handlers/validationHandlers.js";
+import { handleLiveStatus, handleLiveOpenBuild, handleLiveSaveBuild, handleLiveSetView } from "../handlers/liveHandlers.js";
 import { handleExportBuild, handleSaveTree, handleSnapshotBuild, handleListSnapshots, handleRestoreSnapshot, handleExportBuildSummary } from "../handlers/exportHandlers.js";
 import { handleAnalyzeSkillLinks, handleSuggestSupportGems, handleCompareGemSetups, handleValidateGemQuality, handleFindOptimalLinks, handleGemUpgradePath } from "../handlers/skillGemHandlers.js";
 import { handleSearchTradeItems, handleGetItemPrice, handleGetLeagues, handleSearchStats, handleFindResistanceGear, handleCompareTradeItems, handleFindWeightedTradeItems } from "../handlers/tradeHandlers.js";
@@ -205,6 +206,20 @@ export async function routeToolCall(
 
     case "lua_get_build_info":
       return await handleLuaGetBuildInfo(luaContext);
+
+    case "live_status":
+      return await handleLiveStatus(luaContext);
+
+    case "live_open_build":
+      if (!args?.build_name) throw new Error("build_name is required");
+      return await handleLiveOpenBuild(luaContext, args.build_name as string);
+
+    case "live_save_build":
+      return await handleLiveSaveBuild(luaContext, args?.build_name as string | undefined);
+
+    case "live_set_view":
+      if (!args?.view) throw new Error("view is required");
+      return await handleLiveSetView(luaContext, args.view as string);
 
     case "lua_reload_build":
       return await handleLuaReloadBuild(luaContext, args?.build_name as string | undefined);

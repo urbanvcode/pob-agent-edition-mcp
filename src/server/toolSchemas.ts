@@ -308,6 +308,37 @@ export function getToolSchemas(): ToolSchema[] {
 export function getLuaToolSchemas(): ToolSchema[] {
   return [
     {
+      name: "live_status",
+      description: "PoB Agent Edition: report whether tools are driving the user's live PoB window or the headless engine, and what the window shows (build name, file, unsaved changes, class, tab). Call this first when the user refers to 'my PoB' or 'what's open'. In live mode every lua_* tool reads and edits the window directly, and the user sees changes immediately.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "live_open_build",
+      description: "PoB Agent Edition: open a saved build file in the user's live PoB window (replaces what is shown; warn the user first if live_status reports unsaved changes).",
+      inputSchema: {
+        type: "object",
+        properties: { build_name: { type: "string", description: "Build file name in the Builds folder (e.g. 'MyBuild.xml') or an absolute path" } },
+        required: ["build_name"],
+      },
+    },
+    {
+      name: "live_save_build",
+      description: "PoB Agent Edition: save the live window's build, like Ctrl+S. With build_name, saves as a new file instead (recommended for AI-made variants so the original is kept). Only save over the original when the user asks.",
+      inputSchema: {
+        type: "object",
+        properties: { build_name: { type: "string", description: "Optional new file name (e.g. 'MyBuild - upgraded.xml')" } },
+      },
+    },
+    {
+      name: "live_set_view",
+      description: "PoB Agent Edition: switch the live window to a tab so the user can see a change: TREE, SKILLS, ITEMS, CALCS, CONFIG, NOTES, IMPORT, PARTY.",
+      inputSchema: {
+        type: "object",
+        properties: { view: { type: "string", enum: ["TREE", "SKILLS", "ITEMS", "CALCS", "CONFIG", "NOTES", "IMPORT", "PARTY"] } },
+        required: ["view"],
+      },
+    },
+    {
       name: "lua_get_capabilities",
       description: "Report the active PoB bridge mode, adapter version, and supported actions.",
       inputSchema: { type: "object", properties: {} },

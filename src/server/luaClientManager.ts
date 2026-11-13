@@ -101,7 +101,7 @@ export class LuaClientManager {
         try { await deadClient.stop(); } catch (e) { noteIgnoredError("stop of crashed bridge before restart (process already gone)", e); }
       }
       await this.initClient();
-      if (crashed) {
+      if (crashed && !this.client?.isLive()) {
         // The restarted bridge holds only the init-test build; proceeding silently
         // would return blank-character stats as if they were the user's build.
         throw new Error('The PoB Lua bridge crashed and was restarted. The previously loaded build was lost — reload it with lua_load_build, then retry.');
@@ -117,8 +117,36 @@ export class LuaClientManager {
     }
   }
 
+  /**
+   * Live mode: drive a running PoB Agent Edition window.
+   * POB_LIVE=auto (default) tries the window first and falls back to headless;
+   * POB_LIVE=only never falls back; POB_LIVE=off always uses headless.
+   */
+  private async tryLiveClient(): Promise<boolean> {
+    const mode = (process.env.POB_LIVE || 'auto').toLowerCase();
+    if (mode === 'off' || mode === 'false') return false;
+    const port = parseInt(process.env.POB_AGENT_PORT || '31337', 10);
+    const liveClient = new PoBLuaApiClient({
+      livePort: port,
+      timeoutMs: process.env.POB_TIMEOUT_MS ? parseInt(process.env.POB_TIMEOUT_MS) : undefined,
+    });
+    try {
+      await liveClient.start();
+      this.client = liveClient;
+      console.error(`[Lua Bridge] Connected to live PoB Agent Edition on port ${port}`);
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (mode === 'only') throw new Error(`${msg}. Start "PoB Agent Edition" and retry.`);
+      console.error(`[Lua Bridge] Live PoB not available (${msg}); using headless engine`);
+      return false;
+    }
+  }
+
   private async initClient(): Promise<void> {
     console.error('[Lua Bridge] Initializing client...');
+    const liveMode = (process.env.POB_LIVE || 'auto').toLowerCase();
+    if (liveMode !== 'off' && liveMode !== 'false' && await this.tryLiveClient()) return;
 
     const stdioClient = new PoBLuaApiClient({
       cwd: process.env.POB_PATH || process.env.POB_FORK_PATH,

@@ -1,4 +1,5 @@
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
+import net from "net";
 import { noteIgnoredError } from './utils/errorHandling.js';
 import { EventEmitter } from "events";
 import path from "path";
@@ -271,10 +272,12 @@ interface PoBLuaApiOptions {
   args?: string[]; // default: ['HeadlessWrapper.lua']
   env?: Record<string, string>;
   timeoutMs?: number; // per-request timeout
+  /** Connect to a running PoB Agent Edition window on 127.0.0.1:<port> instead of spawning LuaJIT. */
+  livePort?: number;
 }
 
 /** Constructor input with every defaulted field resolved — what the client stores. */
-type ResolvedOptions = Required<Omit<PoBLuaApiOptions, 'cwd'>> & { cwd?: string };
+type ResolvedOptions = Required<Omit<PoBLuaApiOptions, 'cwd' | 'livePort'>> & { cwd?: string; livePort?: number };
 
 /**
  * A non-damaging ailment as the engine sees it. `appliedEffect` is what the
@@ -313,6 +316,11 @@ export class PoBLuaApiClient {
 
   getLoadedFilePath(): string | undefined { return this.loadedFilePath; }
   private proc: ChildProcessWithoutNullStreams | null = null;
+  /** Socket to a live PoB Agent Edition window (live mode only). */
+  private sock: net.Socket | null = null;
+
+  /** True when this client drives a live PoB window rather than a headless engine. */
+  isLive(): boolean { return this.options.livePort !== undefined; }
   private options: ResolvedOptions;
   private buffer = "";
   private ready = false;
@@ -322,7 +330,7 @@ export class PoBLuaApiClient {
 
   /** Returns true if the process is running and ready to accept requests. */
   isAlive(): boolean {
-    return !this.killed && this.ready && !!this.proc;
+    return !this.killed && this.ready && (!!this.proc || !!this.sock);
   }
 
   constructor(options: PoBLuaApiOptions = {}) {
@@ -335,10 +343,12 @@ export class PoBLuaApiClient {
       args: options.args || ["HeadlessWrapper.lua"],
       env: options.env || {},
       timeoutMs: options.timeoutMs ?? 30000, // Increased from 10s to 30s
+      livePort: options.livePort,
     };
   }
 
   async start(): Promise<void> {
+    if (this.options.livePort !== undefined) return this.startLive(this.options.livePort);
     if (this.proc) {
       if (!this.killed) return;
       // Previous process died; clear it so we can restart
@@ -474,6 +484,64 @@ export class PoBLuaApiClient {
     }
   }
 
+  private async startLive(port: number): Promise<void> {
+    if (this.sock && !this.killed) return;
+    this.killed = false;
+    this.ready = false;
+    this.buffer = "";
+    this.loadedFilePath = undefined;
+    const sock = await new Promise<net.Socket>((resolve, reject) => {
+      const s = net.createConnection({ host: "127.0.0.1", port });
+      const timer = setTimeout(() => { s.destroy(); reject(new Error(`PoB Agent Edition did not answer on 127.0.0.1:${port}`)); }, 3000);
+      s.once("connect", () => { clearTimeout(timer); resolve(s); });
+      s.once("error", (err) => { clearTimeout(timer); reject(new Error(`PoB Agent Edition is not running on 127.0.0.1:${port} (${err.message})`)); });
+    });
+    this.sock = sock;
+    sock.setEncoding("utf8");
+    sock.setNoDelay(true);
+    sock.on("data", (chunk: string) => { if (this.sock === sock) this.onStdout(chunk); });
+    sock.on("error", () => {});
+    sock.on("close", () => {
+      if (this.sock !== sock) return;
+      this.killed = true;
+      this.sock = null;
+      this.dataEmitter.emit("error", new Error("PoB Agent Edition window closed the connection"));
+    });
+    const banner = JSON.parse(await this.readLineWithTimeout(5000));
+    if (!banner || banner.ready !== true) {
+      sock.destroy();
+      this.sock = null;
+      throw new Error("PoB Agent Edition sent no ready banner");
+    }
+    this.ready = true;
+  }
+
+  /** Live mode: what the PoB window currently shows. */
+  async getLiveState(): Promise<Record<string, unknown>> {
+    const res = await this.send({ action: "get_live_state" });
+    if (!res.ok) throw new Error(res.error || "get_live_state failed");
+    return res.state as Record<string, unknown>;
+  }
+
+  /** Live mode: run a live-only action (open_build_file, save_live_build, set_view). */
+  async liveAction(action: string, params: Record<string, unknown> = {}): Promise<LuaResponse> {
+    return this.send({ action, params });
+  }
+
+  private hardStop(): void {
+    if (this.sock) {
+      try { this.sock.destroy(); } catch (e) { noteIgnoredError("destroy live socket", e); }
+      this.sock = null;
+      return;
+    }
+    try { this.proc?.kill(); } catch (e) { noteIgnoredError("kill on stop (process likely already exited)", e); }
+  }
+
+  private writeLine(line: string): void {
+    if (this.sock) this.sock.write(line);
+    else this.proc!.stdin.write(line);
+  }
+
   private onStdout(chunk: string) {
     if (process.env.POB_DEBUG === "true") {
       console.error("[PoB API stdout]", chunk.trim());
@@ -522,14 +590,14 @@ export class PoBLuaApiClient {
   }
 
   private async send(obj: LuaRequest): Promise<LuaResponse> {
-    if (!this.proc || !this.proc.stdin) throw new Error("Process not started");
+    if (!this.sock && (!this.proc || !this.proc.stdin)) throw new Error("Process not started");
     if (this.killed) throw new Error("PoB API exited");
     if (!this.ready) throw new Error("Process not ready");
     if (this.isSending) throw new Error("Concurrent request not supported");
 
     this.isSending = true;
     try {
-      this.proc.stdin.write(JSON.stringify(obj) + "\n");
+      this.writeLine(JSON.stringify(obj) + "\n");
 
       // Read lines until we get valid JSON response
       // Skip non-JSON lines (like "LOADING", warnings, etc.)
@@ -547,7 +615,7 @@ export class PoBLuaApiClient {
           if (err instanceof Error && /Timed out/.test(err.message)) {
             this.killed = true;
             this.buffer = "";
-            try { this.proc?.kill(); } catch (e) { noteIgnoredError("kill on stop (process likely already exited)", e); }
+            this.hardStop();
             throw new Error("Timed out waiting for response; the PoB bridge was terminated to avoid protocol desync and will restart on the next call");
           }
           throw err;
@@ -573,7 +641,7 @@ export class PoBLuaApiClient {
       // request. Terminate so the manager restarts from a clean state.
       this.killed = true;
       this.buffer = "";
-      try { this.proc?.kill(); } catch (e) { noteIgnoredError("kill on stop (process likely already exited)", e); }
+      this.hardStop();
       throw new Error(`Failed to receive valid JSON response after ${maxAttempts} lines; the PoB bridge was terminated to avoid protocol desync and will restart on the next call`);
     } finally {
       this.isSending = false;
@@ -630,6 +698,19 @@ export class PoBLuaApiClient {
     // A failed import may already have closed the previous native build.
     this.loadedFilePath = undefined;
     this.buildGeneration++;
+    if (this.sock && sourcePath) {
+      // Live window: open the file itself so PoB's own Ctrl+S saves back to it.
+      // If that file is already open, keep the window's (possibly unsaved) state.
+      const target = path.resolve(sourcePath);
+      const state = await this.getLiveState().catch(() => undefined);
+      const openFile = typeof state?.file === "string" ? path.resolve(state.file) : undefined;
+      if (state?.mode !== "BUILD" || openFile?.toLowerCase() !== target.toLowerCase()) {
+        const opened = await this.send({ action: "open_build_file", params: { path: target, name } });
+        if (!opened.ok) throw new Error(opened.error || "open_build_file failed");
+      }
+      this.loadedFilePath = target;
+      return { ok: true };
+    }
     const res = await this.send({ action: "load_build_xml", params: { xml, name } });
     if (!res.ok) throw new Error(res.error || "load_build_xml failed");
     this.loadedFilePath = sourcePath ? path.resolve(sourcePath) : undefined;
@@ -917,6 +998,12 @@ async setTree(params: {
   }
 
   async stop(): Promise<void> {
+    if (this.sock) {
+      // Never closes the user's PoB window; only drops this connection.
+      try { await this.send({ action: "quit" }); } catch (e) { noteIgnoredError("live quit handshake", e); }
+      this.hardStop();
+      return;
+    }
     if (!this.proc) return;
     try {
       await this.send({ action: "quit" });
