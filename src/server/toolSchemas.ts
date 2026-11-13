@@ -331,10 +331,10 @@ export function getLuaToolSchemas(): ToolSchema[] {
     },
     {
       name: "live_set_view",
-      description: "PoB Agent Edition: switch the live window to a tab so the user can see a change: TREE, SKILLS, ITEMS, CALCS, CONFIG, NOTES, IMPORT, PARTY.",
+      description: "PoB Agent Edition: switch the live window to a tab so the user can see a change: OVERVIEW (dashboard with charts), TREE, SKILLS, ITEMS, CALCS, CONFIG, NOTES, IMPORT, PARTY.",
       inputSchema: {
         type: "object",
-        properties: { view: { type: "string", enum: ["TREE", "SKILLS", "ITEMS", "CALCS", "CONFIG", "NOTES", "IMPORT", "PARTY"] } },
+        properties: { view: { type: "string", enum: ["OVERVIEW", "TREE", "SKILLS", "ITEMS", "CALCS", "CONFIG", "NOTES", "IMPORT", "PARTY", "COMPARE"] } },
         required: ["view"],
       },
     },
