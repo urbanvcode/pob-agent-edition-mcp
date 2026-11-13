@@ -16,6 +16,7 @@ export type Experience = "poe2" | "new" | "poe1";
 
 export interface PlayerProfile {
   playMode: PlayMode;
+  hardcore: boolean;
   league: string;
   currency: { chaos: number; divine: number; other: string; updated?: string };
   goals: string[];
@@ -74,6 +75,7 @@ export function normalizeProfile(raw: unknown): PlayerProfile {
   const cur = (p.currency && typeof p.currency === "object" ? p.currency : {}) as Record<string, unknown>;
   const profile: PlayerProfile = {
     playMode: oneOf(PLAY_MODES, p.playMode, "trade"),
+    hardcore: p.hardcore === true,
     league: str(p.league),
     currency: { chaos: amount(cur.chaos), divine: amount(cur.divine), other: str(cur.other) },
     goals: stringList(p.goals),
@@ -128,6 +130,7 @@ function writeProfile(file: string, profile: PlayerProfile): void {
 
 export interface ProfileUpdate {
   playMode?: string;
+  hardcore?: boolean;
   league?: string;
   currency?: { chaos?: number; divine?: number; other?: string };
   goals?: string[];
@@ -161,6 +164,7 @@ export function updateProfile(update: ProfileUpdate): { profile: PlayerProfile; 
     if (!(update.experience in EXPERIENCE)) throw new Error(`experience must be one of: ${Object.keys(EXPERIENCE).join(", ")}`);
     next.experience = update.experience as Experience;
   }
+  if (update.hardcore !== undefined) next.hardcore = update.hardcore === true;
   if (update.league !== undefined) next.league = str(update.league);
   if (update.currency) {
     const c = update.currency;
@@ -177,7 +181,7 @@ export function updateProfile(update: ProfileUpdate): { profile: PlayerProfile; 
   if (update.reset_learned) next.learnedTopics = [];
 
   const stamp = now();
-  for (const key of ["playMode", "league", "goals", "experience", "explanationMode", "learnedTopics"] as const) {
+  for (const key of ["playMode", "hardcore", "league", "goals", "experience", "explanationMode", "learnedTopics"] as const) {
     if (JSON.stringify(current[key]) !== JSON.stringify(next[key])) changed.push(key);
   }
   const { updated: _u, ...curA } = current.currency;
@@ -217,7 +221,7 @@ function currencyText(p: PlayerProfile): string {
 
 /** One line for live_status and other tool outputs. */
 export function profileSummaryLine(p: PlayerProfile): string {
-  return `Player profile: ${PLAY_MODES[p.playMode]} | explanations: ${EXPLANATION_MODES[p.explanationMode]} | league: ${p.league || "current league (not set)"} | currency: ${currencyText(p)}${p.goals.length ? ` | goals: ${p.goals.join(", ")}` : ""}. Read profile_get before advising.`;
+  return `Player profile: ${PLAY_MODES[p.playMode]} ${p.hardcore ? "Hardcore" : "Softcore"} | explanations: ${EXPLANATION_MODES[p.explanationMode]} | league: ${p.league || "current league (not set)"} | currency: ${currencyText(p)}${p.goals.length ? ` | goals: ${p.goals.join(", ")}` : ""}. Read profile_get before advising.`;
 }
 
 /** How the AI should answer for this profile. Returned by profile_get. */
@@ -233,6 +237,9 @@ export function answerRules(p: PlayerProfile): string[] {
     case "mixed":
       rules.push("MIXED: give both a trade option (instant buyout, price) and a self-found option (craft/farm/drop), each clearly labelled [Trade] / [SSF].");
       break;
+  }
+  if (p.hardcore) {
+    rules.push("HARDCORE: one death moves the character to the softcore league for good. Put defences before damage: fix resistances, max hit, EHP, recovery and ailment protection first; flag risky choices (low max hit, dangerous map mods, mechanics that remove a defence layer) and give the safe option. Trade searches must use the Hardcore league (e.g. 'Hardcore' or 'Hardcore <league>'; check get_leagues).");
   }
   switch (p.explanationMode) {
     case "teach":
@@ -258,6 +265,7 @@ export function formatProfile(p: PlayerProfile, file: string | undefined, stored
   const lines = [
     "=== Player profile ===",
     `Play mode: ${PLAY_MODES[p.playMode]} (${p.playMode})`,
+    `Hardcore: ${p.hardcore ? "yes" : "no (softcore)"}`,
     `League: ${p.league || "(not set - current challenge league)"}`,
     `Currency on hand: ${currencyText(p)}${p.currency.updated ? ` (updated ${p.currency.updated})` : ""}`,
     `Goals: ${p.goals.length ? p.goals.join("; ") : "(none set)"}`,

@@ -46,6 +46,10 @@ export async function handleProfileSet(ctx: ProfileContext, args: ProfileUpdate)
     note = checked.note;
   }
   const { profile, changed, file } = updateProfile(update);
+  const hcLeague = /hardcore|\bhc\b/i.test(profile.league);
+  if (profile.league && profile.hardcore !== hcLeague) {
+    note = [note, `Check: profile is ${profile.hardcore ? "Hardcore" : "softcore"} but league "${profile.league}" looks ${hcLeague ? "Hardcore" : "softcore"}.`].filter(Boolean).join(" ");
+  }
   const lines = [
     changed.length ? `Profile updated: ${changed.join(", ")}.` : "No changes (values already set).",
     ...(note ? [note] : []),

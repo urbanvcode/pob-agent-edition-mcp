@@ -40,6 +40,8 @@ describe('player profile', () => {
     expect(data.profile.currency.chaos).toBe(300);
     expect(data.profile.currency.updated).toBeDefined();
     expect(updateProfile({ playMode: 'ssf' }).changed).toEqual([]);
+    expect(updateProfile({ hardcore: true }).changed).toEqual(['hardcore']);
+    expect(getProfile().profile.hardcore).toBe(true);
   });
 
   it('rejects invalid enums', () => {
@@ -61,6 +63,8 @@ describe('player profile', () => {
     expect(answerRules(base).join(' ')).toMatch(/TEACH/);
     expect(answerRules(ssfDeep).join(' ')).toMatch(/Do NOT suggest buying/);
     expect(answerRules(ssfDeep).join(' ')).toMatch(/DEEP DIVE/);
-    expect(profileSummaryLine(ssfDeep)).toMatch(/SSF \| explanations: Deep dive/);
+    expect(profileSummaryLine(ssfDeep)).toMatch(/SSF Softcore \| explanations: Deep dive/);
+    expect(answerRules(base).join(' ')).not.toMatch(/HARDCORE/);
+    expect(answerRules(normalizeProfile({ hardcore: true })).join(' ')).toMatch(/HARDCORE: one death/);
   });
 });

@@ -36,7 +36,7 @@ export function getToolSchemas(): ToolSchema[] {
   return [
     {
       name: "profile_get",
-      description: "Read the player profile FIRST in every conversation: play mode (trade / SSF / mixed), league, currency on hand, goals, PoE experience, explanation mode (Teach / Concise / Deep dive) and topics already explained. Returns rules for how to answer. Shared by every AI client and PoB Agent Edition (Options > Agent profile).",
+      description: "Read the player profile FIRST in every conversation: play mode (trade / SSF / mixed), hardcore or softcore, league, currency on hand, goals, PoE experience, explanation mode (Teach / Concise / Deep dive) and topics already explained. Returns rules for how to answer. Shared by every AI client and PoB Agent Edition (Options > Agent profile).",
       inputSchema: { type: "object", properties: {} },
     },
     {
@@ -46,7 +46,8 @@ export function getToolSchemas(): ToolSchema[] {
         type: "object",
         properties: {
           playMode: { type: "string", enum: ["trade", "ssf", "mixed"], description: "trade = buy upgrades; ssf = Solo Self-Found (no trading: craft/farm/drops); mixed = show both, labelled" },
-          league: { type: "string", description: "Trade league id (e.g. 'Standard'); empty string = current challenge league" },
+          hardcore: { type: "boolean", description: "true = Hardcore (a death moves the character to softcore): defences first, Hardcore trade league" },
+          league: { type: "string", description: "Trade league id (e.g. 'Standard', 'Hardcore'); empty string = current challenge league (its Hardcore version when hardcore)" },
           currency: {
             type: "object",
             description: "Currency on hand (only given keys change)",
