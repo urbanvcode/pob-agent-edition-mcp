@@ -308,6 +308,33 @@ export function getToolSchemas(): ToolSchema[] {
 export function getLuaToolSchemas(): ToolSchema[] {
   return [
     {
+      name: "atlas_get",
+      description: "Atlas passive tree (PoE1's endgame tree for maps and league mechanics, 150 points; similar in role to PoE2's atlas tree but a different layout): show allocated notables/keystones, points used/150 and an official share link. Uses the latest league's atlas data. Stored inside the build; in live mode it is the window's Atlas tab.",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "atlas_search",
+      description: "Search atlas passives by name or stat text (e.g. 'expedition', 'harbinger', 'map quantity', 'scarab'). Returns node ids, stats and how many points it costs to reach each from the current allocation.",
+      inputSchema: {
+        type: "object",
+        properties: { query: { type: "string" }, limit: { type: "number", description: "Max results (default 25)" } },
+        required: ["query"],
+      },
+    },
+    {
+      name: "atlas_edit",
+      description: "Change the atlas tree. add: node ids to allocate (the shortest path is taken automatically); remove: node ids to remove (dependent passives are removed too); replace: set the whole allocation; link: import an official pathofexile.com atlas tree link (e.g. from a farming guide). Stays within 150 points. Save the build afterwards to keep it.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          add: { type: "array", items: { type: "string" } },
+          remove: { type: "array", items: { type: "string" } },
+          replace: { type: "array", items: { type: "string" } },
+          link: { type: "string" },
+        },
+      },
+    },
+    {
       name: "live_status",
       description: "PoB Agent Edition: report whether tools are driving the user's live PoB window or the headless engine, and what the window shows (build name, file, unsaved changes, class, tab). Call this first when the user refers to 'my PoB' or 'what's open'. In live mode every lua_* tool reads and edits the window directly, and the user sees changes immediately.",
       inputSchema: { type: "object", properties: {} },

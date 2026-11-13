@@ -279,6 +279,63 @@ handlers.test_items = function(params)
   } }
 end
 
+-- Atlas passive tree (PoB Agent Edition's Atlas tab) ------------------------
+local function atlasNode(n, alloc)
+  return { id = n.id, name = n.name, type = n.type, stats = n.stats, allocated = alloc and alloc[n.id] == true or nil }
+end
+local function atlasTab()
+  local tab = build and build.atlasTab
+  if not tab then return nil, 'this PoB has no Atlas tab (needs PoB Agent Edition)' end
+  local atlas = tab:Data()
+  if not atlas then return nil, 'atlas data not available: ' .. tostring(tab.loadError) end
+  return tab, atlas
+end
+handlers.atlas_get = function()
+  local tab, atlas = atlasTab()
+  if not tab then return { ok = false, error = atlas } end
+  local nodes = {}
+  for _, n in ipairs(tab:AllocatedList()) do table.insert(nodes, atlasNode(n)) end
+  local AtlasData = LoadModule('Agent/AtlasData')
+  return { ok = true, result = { version = atlas.version, pointsUsed = tab:PointsUsed(), pointsTotal = atlas.points, nodes = nodes, link = AtlasData.encodeLink(atlas, tab.alloc) } }
+end
+handlers.atlas_search = function(params)
+  local tab, atlas = atlasTab()
+  if not tab then return { ok = false, error = atlas } end
+  local res = {}
+  for _, n in ipairs(tab:Search(params.query or '', tonumber(params.limit) or 25)) do
+    local node = atlasNode(n, tab.alloc)
+    local path = (not tab.alloc[n.id]) and LoadModule('Agent/AtlasData').pathTo(atlas, tab.alloc, n.id) or nil
+    node.pathCost = path and #path or nil
+    table.insert(res, node)
+  end
+  return { ok = true, result = res }
+end
+-- params: { add = {ids}, remove = {ids}, replace = {ids}, link = "https://..." }
+handlers.atlas_edit = function(params)
+  local tab, atlas = atlasTab()
+  if not tab then return { ok = false, error = atlas } end
+  local AtlasData = LoadModule('Agent/AtlasData')
+  local report = { added = {}, removed = {}, errors = {} }
+  if type(params.link) == 'string' and params.link ~= '' then
+    local ids, err = AtlasData.decodeLink(params.link)
+    if not ids then return { ok = false, error = err } end
+    tab:SetNodes(ids)
+  elseif type(params.replace) == 'table' then
+    tab:SetNodes(params.replace)
+  end
+  for _, id in ipairs(type(params.remove) == 'table' and params.remove or {}) do
+    for _, r in ipairs(tab:Deallocate(tostring(id))) do table.insert(report.removed, r) end
+  end
+  for _, id in ipairs(type(params.add) == 'table' and params.add or {}) do
+    local path, err = tab:Allocate(tostring(id))
+    if path then for _, p in ipairs(path) do table.insert(report.added, p) end
+    else table.insert(report.errors, tostring(id) .. ': ' .. tostring(err)) end
+  end
+  report.pointsUsed = tab:PointsUsed()
+  report.pointsTotal = atlas.points
+  return { ok = true, result = report }
+end
+
 handlers.evaluate_anoint_candidates = evaluate_anoint_candidates
 handlers.generate_weighted_trade_query = generate_weighted_trade_query
 

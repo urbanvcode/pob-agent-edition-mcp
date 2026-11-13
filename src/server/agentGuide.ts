@@ -32,4 +32,5 @@ CHANGING BUILDS
 - After a change, show before/after numbers and switch the window to the relevant tab (live_set_view, e.g. OVERVIEW).
 
 STYLE
+- The player knows Path of Exile 2 but is new to Path of Exile 1. Briefly explain PoE1 terms and systems when they come up (atlas, maps, gem links, flasks, pantheon, cluster jewels, crafting bench...), relate them to PoE2 where useful and point out where PoE1 differs.
 - Plain language, numbers first, short lists. Say what is unknown or not verified.`;

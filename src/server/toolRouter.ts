@@ -25,6 +25,7 @@ import { handleAnalyzeItems, handleOptimizeSkillLinks, handleCreateBudgetBuild }
 import { handleGetConfig, handleSetConfig, handleSetEnemyStats, handleSaveConfigPreset, handleLoadConfigPreset, handleListConfigPresets } from "../handlers/configHandlers.js";
 import { handleValidateBuild } from "../handlers/validationHandlers.js";
 import { handlePlanUpgrades, type UpgradeArgs } from "../handlers/upgradePlanHandler.js";
+import { handleAtlasGet, handleAtlasSearch, handleAtlasEdit } from "../handlers/atlasHandlers.js";
 import { handleLiveStatus, handleLiveOpenBuild, handleLiveSaveBuild, handleLiveSetView } from "../handlers/liveHandlers.js";
 import { handleExportBuild, handleSaveTree, handleSnapshotBuild, handleListSnapshots, handleRestoreSnapshot, handleExportBuildSummary } from "../handlers/exportHandlers.js";
 import { handleAnalyzeSkillLinks, handleSuggestSupportGems, handleCompareGemSetups, handleValidateGemQuality, handleFindOptimalLinks, handleGemUpgradePath } from "../handlers/skillGemHandlers.js";
@@ -210,6 +211,16 @@ export async function routeToolCall(
 
     case "lua_get_build_info":
       return await handleLuaGetBuildInfo(luaContext);
+
+    case "atlas_get":
+      return await handleAtlasGet(luaContext);
+
+    case "atlas_search":
+      if (!args?.query) throw new Error("query is required");
+      return await handleAtlasSearch(luaContext, args.query as string, args.limit as number | undefined);
+
+    case "atlas_edit":
+      return await handleAtlasEdit(luaContext, (args ?? {}) as { add?: string[]; remove?: string[]; replace?: string[]; link?: string });
 
     case "live_status":
       return await handleLiveStatus(luaContext);
