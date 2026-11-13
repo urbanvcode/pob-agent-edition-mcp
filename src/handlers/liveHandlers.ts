@@ -4,6 +4,7 @@
  * These only work when the bridge is connected to a running Agent Edition
  * window (POB_LIVE=auto|only). In headless mode they explain how to switch.
  */
+import { getProfile, profileSummaryLine } from "../utils/playerProfile.js";
 import path from "path";
 import { wrapHandler } from "../utils/errorHandling.js";
 import type { PoBLuaApiClient } from "../pobLuaBridge.js";
@@ -31,6 +32,16 @@ async function liveClient(context: LiveContext): Promise<PoBLuaApiClient> {
 }
 
 export async function handleLiveStatus(context: LiveContext) {
+  const result = await liveStatus(context);
+  // Every conversation starts with live_status, so the profile is seen at once.
+  try {
+    const first = result.content[0];
+    if (first) first.text += "\n" + profileSummaryLine(getProfile().profile);
+  } catch { /* profile is optional */ }
+  return result;
+}
+
+async function liveStatus(context: LiveContext) {
   return wrapHandler("get live PoB status", async () => {
     await context.ensureLuaClient();
     const client = context.getLuaClient();

@@ -25,6 +25,8 @@ import { handleAnalyzeItems, handleOptimizeSkillLinks, handleCreateBudgetBuild }
 import { handleGetConfig, handleSetConfig, handleSetEnemyStats, handleSaveConfigPreset, handleLoadConfigPreset, handleListConfigPresets } from "../handlers/configHandlers.js";
 import { handleValidateBuild } from "../handlers/validationHandlers.js";
 import { handlePlanUpgrades, type UpgradeArgs } from "../handlers/upgradePlanHandler.js";
+import { handleProfileGet, handleProfileSet, handleProfileMarkLearned } from "../handlers/profileHandlers.js";
+import { getProfile } from "../utils/playerProfile.js";
 import { handleAtlasGet, handleAtlasSearch, handleAtlasEdit } from "../handlers/atlasHandlers.js";
 import { handleLiveStatus, handleLiveOpenBuild, handleLiveSaveBuild, handleLiveSetView } from "../handlers/liveHandlers.js";
 import { handleExportBuild, handleSaveTree, handleSnapshotBuild, handleListSnapshots, handleRestoreSnapshot, handleExportBuildSummary } from "../handlers/exportHandlers.js";
@@ -81,6 +83,18 @@ export async function routeToolCall(
   const skillGemContext = deps.contextBuilder.buildSkillGemContext();
 
   switch (name) {
+    case "profile_get":
+      return await handleProfileGet();
+
+    case "profile_set":
+      return await handleProfileSet({ tradeClient: deps.tradeClient }, (args ?? {}) as Parameters<typeof handleProfileSet>[1]);
+
+    case "profile_mark_learned": {
+      const topics = Array.isArray(args?.topics) ? (args!.topics as string[]) : typeof args?.topics === "string" ? [args.topics as string] : [];
+      if (!topics.length) throw new Error("topics is required (list of topic names)");
+      return await handleProfileMarkLearned(topics);
+    }
+
     case "list_builds":
       return await handleListBuilds(handlerContext);
 
@@ -567,8 +581,17 @@ export async function routeToolCall(
 
     case "plan_upgrades":
       if (!deps.tradeClient) throw new Error('Trade API is not enabled. Set POE_TRADE_ENABLED=true to enable.');
-      if (!args?.league) throw new Error('plan_upgrades requires league (use get_leagues if unsure)');
-      return await handlePlanUpgrades({ tradeClient: deps.tradeClient, ninjaClient: deps.ninjaClient, getLuaClient: deps.getLuaClient, ensureLuaClient: deps.ensureLuaClient }, args as unknown as UpgradeArgs);
+    {
+      const profile = getProfile().profile;
+      const upgradeArgs = { ...(args ?? {}) } as unknown as UpgradeArgs;
+      if (!upgradeArgs.league && profile.league) upgradeArgs.league = profile.league;
+      if (!upgradeArgs.league) throw new Error('plan_upgrades requires league (not set in the player profile; use get_leagues if unsure)');
+      const result = await handlePlanUpgrades({ tradeClient: deps.tradeClient, ninjaClient: deps.ninjaClient, getLuaClient: deps.getLuaClient, ensureLuaClient: deps.ensureLuaClient }, upgradeArgs);
+      if (profile.playMode === "ssf" && result.content[0]) {
+        result.content[0].text = "NOTE: the player profile is SSF (no trading). These listings only show what such items are worth; present them as craft/farm targets, not purchases.\n\n" + result.content[0].text;
+      }
+      return result;
+    }
 
     case "find_weighted_trade_items":
       if (!deps.tradeClient) throw new Error('Trade API is not enabled. Set POE_TRADE_ENABLED=true to enable.');

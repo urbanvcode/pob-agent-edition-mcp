@@ -35,6 +35,42 @@ export interface ToolSchema {
 export function getToolSchemas(): ToolSchema[] {
   return [
     {
+      name: "profile_get",
+      description: "Read the player profile FIRST in every conversation: play mode (trade / SSF / mixed), league, currency on hand, goals, PoE experience, explanation mode (Teach / Concise / Deep dive) and topics already explained. Returns rules for how to answer. Shared by every AI client and PoB Agent Edition (Options > Agent profile).",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "profile_set",
+      description: "Change the player profile when the player asks or states a fact (\"I'm playing SSF now\", \"I have 300 chaos\", \"explain less\"). Only the given fields change. The league is checked against pathofexile.com. PoB's Overview header updates within seconds.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          playMode: { type: "string", enum: ["trade", "ssf", "mixed"], description: "trade = buy upgrades; ssf = Solo Self-Found (no trading: craft/farm/drops); mixed = show both, labelled" },
+          league: { type: "string", description: "Trade league id (e.g. 'Standard'); empty string = current challenge league" },
+          currency: {
+            type: "object",
+            description: "Currency on hand (only given keys change)",
+            properties: { chaos: { type: "number" }, divine: { type: "number" }, other: { type: "string", description: "Free text, e.g. '20 alch, 5 exalted'" } },
+          },
+          goals: { type: "array", items: { type: "string" }, description: "Replace the goal list" },
+          add_goals: { type: "array", items: { type: "string" } },
+          remove_goals: { type: "array", items: { type: "string" } },
+          experience: { type: "string", enum: ["poe2", "new", "poe1"], description: "poe2 = knows PoE2, new to PoE1; new = new to Path of Exile; poe1 = experienced PoE1" },
+          explanationMode: { type: "string", enum: ["teach", "concise", "deep"], description: "teach = explain each PoE1 mechanic once (compared with PoE2); concise = actions + numbers; deep = full mechanics and maths" },
+          reset_learned: { type: "boolean", description: "Clear the learned topics so everything is explained again" },
+        },
+      },
+    },
+    {
+      name: "profile_mark_learned",
+      description: "Teach mode memory: after explaining a PoE1 mechanic to the player, record the topic (short name, e.g. 'pantheon', 'more vs increased', 'cluster jewels') so it isn't explained again in later conversations.",
+      inputSchema: {
+        type: "object",
+        properties: { topics: { type: "array", items: { type: "string" }, description: "Topic names just explained" } },
+        required: ["topics"],
+      },
+    },
+    {
       name: "analyze_build",
       truncatable: true,
       description: "Analyze a Path of Building build file and extract detailed information including stats, skills, gear, passive skill tree analysis with keystones, notables, jewel sockets, build archetype detection, and optimization suggestions",
@@ -1590,14 +1626,13 @@ export function getTradeToolSchemas(): ToolSchema[] {
       inputSchema: {
         type: "object",
         properties: {
-          league: { type: "string", description: "Exact league name (get_leagues lists them)" },
+          league: { type: "string", description: "Exact league name (get_leagues lists them). Defaults to the player profile league." },
           budget_chaos: { type: "number", description: "Max price per item in chaos equivalent (default 50)" },
           focus: { type: "string", enum: ["balanced", "dps", "defence"], description: "What to optimise (default balanced)" },
           slots: { type: "array", items: { type: "string" }, description: "Gear slots to search (default Helmet, Body Armour, Gloves, Boots, Belt, Amulet, Ring 1; max 8)" },
           per_slot: { type: "number", description: "Listings tested per slot (default 4, max 8)" },
           max_results: { type: "number", description: "Upgrades to return (default 8)" },
         },
-        required: ["league"],
       },
     },
     {

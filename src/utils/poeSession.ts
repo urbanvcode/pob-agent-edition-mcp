@@ -12,7 +12,8 @@ import path from "path";
 
 let cache: { file: string; mtimeMs: number; value: string | undefined } | undefined;
 
-function candidateFiles(): string[] {
+/** AgentEdition.json locations in priority order (shared with playerProfile.ts). */
+export function agentSettingsCandidates(): string[] {
   const files: string[] = [];
   if (process.env.POB_AGENT_SETTINGS) files.push(process.env.POB_AGENT_SETTINGS);
   // POB_DIRECTORY is the Builds folder; the user folder is its parent.
@@ -22,7 +23,7 @@ function candidateFiles(): string[] {
 }
 
 function readFromAgentSettings(): string | undefined {
-  for (const file of candidateFiles()) {
+  for (const file of agentSettingsCandidates()) {
     let stat: fs.Stats;
     try { stat = fs.statSync(file); } catch { continue; }
     if (cache && cache.file === file && cache.mtimeMs === stat.mtimeMs) return cache.value;
