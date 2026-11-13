@@ -63,6 +63,9 @@ export async function routeToolCall(
   args: Record<string, unknown> | undefined,
   deps: ToolRouterDependencies
 ): ToolResponse {
+  // Every tool call gets a fresh, bounded trade-request budget.
+  deps.tradeClient?.beginCall?.();
+
   // Check tool gate first
 
   // Create handler contexts using contextBuilder

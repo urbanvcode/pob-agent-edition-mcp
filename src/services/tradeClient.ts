@@ -1,5 +1,6 @@
 import Bottleneck from 'bottleneck';
 import { getPoeSessionId } from '../utils/poeSession.js';
+import { RateGovernor, policyForUrl } from './rateGovernor.js';
 import {
   TradeQuery,
   SearchResult,
@@ -17,7 +18,10 @@ class FinalApiError extends Error {}
  * Client for interacting with the Path of Exile Trade API
  *
  * Features:
- * - Rate limiting (4 requests/second conservative estimate)
+ * - Polite by default: one request per 2s, every limit tier pathofexile.com
+ *   publishes is respected before it is reached (RateGovernor), a per-question
+ *   request budget, 429s are never retried, and the session cookie is only
+ *   sent to pathofexile.com
  * - Response caching with TTL
  * - Automatic retry with exponential backoff
  * - Rate limit header parsing
@@ -39,33 +43,35 @@ export class TradeApiClient {
   private readonly retryMaxAttempts: number;
   private readonly retryBaseDelayMs: number;
 
+  private readonly governor: RateGovernor;
+  /** Network requests allowed per AI tool call (cache hits are free). */
+  private readonly maxRequestsPerCall: number;
+  private requestsLeft = Infinity;
+  /** Longest pause we accept before giving up and asking the user to retry. */
+  private readonly maxWaitMs: number;
+
   constructor(options?: {
     requestsPerSecond?: number;
     cacheTTL?: number;
     maxRetries?: number;
     retryBaseDelayMs?: number;
+    maxRequestsPerCall?: number;
+    maxWaitMs?: number;
+    governor?: RateGovernor;
   }) {
-    const requestsPerSecond = options?.requestsPerSecond || 4;
+    // Default pace: one request every 2 seconds. The governor below adds the
+    // server's own multi-tier limits on top of this.
+    const requestsPerSecond = options?.requestsPerSecond && options.requestsPerSecond > 0 ? options.requestsPerSecond : 0.5;
     this.defaultCacheTTL = (options?.cacheTTL || 300) * 1000; // Convert to ms
     this.retryMaxAttempts = 1 + Math.max(0, options?.maxRetries ?? 2);
     this.retryBaseDelayMs = options?.retryBaseDelayMs ?? 500;
+    this.maxRequestsPerCall = options?.maxRequestsPerCall ?? 16;
+    this.maxWaitMs = options?.maxWaitMs ?? 45_000;
+    this.governor = options?.governor ?? new RateGovernor();
 
-    // Create rate limiter using token bucket algorithm
     this.limiter = new Bottleneck({
-      reservoir: requestsPerSecond * 2, // Initial tokens
-      reservoirRefreshAmount: requestsPerSecond,
-      reservoirRefreshInterval: 1000, // Refill every second
       maxConcurrent: 1, // One request at a time
-      minTime: Math.floor(1000 / requestsPerSecond), // Minimum time between requests
-    });
-
-    // Set up event handlers for better observability
-    this.limiter.on('failed', async (_error, jobInfo) => {
-      const retryAfter = this.rateLimitInfo?.retryAfter;
-      if (retryAfter && jobInfo.retryCount < 3) {
-        console.error(`[TradeAPI] Request failed, retrying after ${retryAfter}ms (attempt ${jobInfo.retryCount + 1}/3)`);
-        return retryAfter;
-      }
+      minTime: Math.ceil(1000 / requestsPerSecond), // Minimum time between requests
     });
 
     this.limiter.on('retry', (_error, jobInfo) => {
@@ -154,18 +160,53 @@ export class TradeApiClient {
   // Private Methods
   // ========================================
 
+  /**
+   * Start a new AI tool call: resets the per-call request budget so one
+   * question can never fire an unbounded number of trade requests.
+   */
+  beginCall(): void {
+    this.requestsLeft = this.maxRequestsPerCall;
+  }
+
+  /** Waits until the request fits every published limit, then reserves it. */
+  private async awaitSlot(url: string): Promise<void> {
+    if (this.requestsLeft <= 0) {
+      throw new FinalApiError(
+        `Stopped after ${this.maxRequestsPerCall} trade requests for this question to stay well inside pathofexile.com's limits. ` +
+        `Results so far are above; ask again to continue.`,
+      );
+    }
+    const policy = policyForUrl(url);
+    const wait = this.governor.waitMs(policy);
+    if (wait > this.maxWaitMs) {
+      throw new FinalApiError(
+        `pathofexile.com asks for a pause of about ${Math.ceil(wait / 1000)}s before more ${policy} requests. ` +
+        `Nothing is wrong with your account; try again after that.`,
+      );
+    }
+    if (wait > 0) {
+      console.error(`[TradeAPI] pausing ${wait}ms to stay inside the ${policy} rate limit`);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    this.governor.record(policy);
+    this.requestsLeft--;
+  }
+
   private async makeRequest<T>(
     method: 'GET' | 'POST',
     url: string,
     body?: unknown
   ): Promise<T> {
+    // The session cookie only ever goes to pathofexile.com itself.
+    const sessionId = new URL(url).hostname === 'www.pathofexile.com' ? getPoeSessionId() : undefined;
+    const policy = policyForUrl(url);
     const options: RequestInit = {
       method,
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'pob-mcp-server/1.0',
         // The official Trade API rejects anonymous weighted-sum searches
-        ...(getPoeSessionId() ? { Cookie: `POESESSID=${getPoeSessionId()}` } : {}),
+        ...(sessionId ? { Cookie: `POESESSID=${sessionId}` } : {}),
       },
       // The 30s timeout lives on the per-attempt signal: without one, a
       // stalled connection blocked the whole queue (limiter maxConcurrent 1).
@@ -179,21 +220,23 @@ export class TradeApiClient {
       try {
         // Fresh timeout per attempt: an AbortSignal.timeout fires once, and a
         // reused (expired) signal would fail every retry instantly.
+        await this.awaitSlot(url);
         options.signal = AbortSignal.timeout(30_000);
         const response = await fetch(url, options);
 
         // Parse rate limit headers
         this.updateRateLimitInfo(response);
+        this.governor.update(policy, response.headers, response.status);
 
-        // Handle rate limiting
+        // Handle rate limiting: never retried automatically
         if (response.status === 429) {
-          const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10) * 1000;
+          const retryAfter = parseInt(response.headers.get('Retry-After') || '60', 10) * 1000;
           this.rateLimitInfo = {
             limit: this.rateLimitInfo?.limit || 0,
             remaining: 0,
             retryAfter,
           };
-          throw new FinalApiError(`Rate limited. Retry after ${retryAfter}ms`);
+          throw new FinalApiError(`pathofexile.com asked us to slow down; pausing trade requests for ${Math.ceil(retryAfter / 1000)}s.`);
         }
 
         if (response.status >= 500) {

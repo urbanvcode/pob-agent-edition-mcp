@@ -117,11 +117,14 @@ class PoBMCPServer {
     // Initialize Trade API client (if enabled)
     const tradeEnabled = process.env.POE_TRADE_ENABLED === 'true';
     if (tradeEnabled) {
-      const requestsPerSecond = parseInt(process.env.POE_RATE_LIMIT_PER_SECOND || '4', 10);
+      // Polite defaults: 1 request / 2s plus the server's own published limits.
+      const requestsPerSecond = parseFloat(process.env.POE_RATE_LIMIT_PER_SECOND || '0.5');
       const cacheTTL = parseInt(process.env.POE_CACHE_TTL || '300', 10);
+      const maxRequestsPerCall = parseInt(process.env.POE_TRADE_MAX_REQUESTS_PER_CALL || '16', 10);
       this.tradeClient = new TradeApiClient({
-        requestsPerSecond,
+        requestsPerSecond: Math.min(requestsPerSecond, 1),
         cacheTTL,
+        maxRequestsPerCall,
       });
       this.statMapper = new StatMapper();
       this.recommendationEngine = new ItemRecommendationEngine(this.tradeClient);
