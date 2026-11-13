@@ -40,6 +40,7 @@ import { LuaClientManager } from "./server/luaClientManager.js";
 import type { ToolSchema } from "./server/toolSchemas.js";
 import { getToolSchemas, getLuaToolSchemas, getOptimizationToolSchemas, getConfigToolSchemas, getValidationToolSchemas, getExportToolSchemas, getSkillGemToolSchemas, getTradeToolSchemas, getPoeNinjaToolSchemas, getBuildGoalsToolSchemas } from "./server/toolSchemas.js";
 import { routeToolCall, type ToolRouterDependencies } from "./server/toolRouter.js";
+import { getPoeSessionId } from "./utils/poeSession.js";
 import { wrapWithTruncation, shouldTruncate } from "./server/responseUtils.js";
 
 class PoBMCPServer {
@@ -264,7 +265,7 @@ class PoBMCPServer {
       if (this.tradeClient) {
         // Weighted search needs the Lua bridge (query generation) and an
         // authenticated session (the Trade API rejects anonymous weighted sums)
-        const weightedAvailable = Boolean(process.env.POE_SESSION_ID)
+        const weightedAvailable = Boolean(getPoeSessionId())
           && this.luaClientManager.isEnabled();
         tools.push(...getTradeToolSchemas().filter((tool) => tool.name !== 'find_weighted_trade_items' || weightedAvailable));
       }

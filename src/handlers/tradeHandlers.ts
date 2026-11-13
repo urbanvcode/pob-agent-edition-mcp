@@ -1,6 +1,7 @@
 import { wrapHandler } from '../utils/errorHandling.js';
 import { TradeApiClient } from '../services/tradeClient.js';
 import { TradeQueryBuilder, defaultOnlineStatus } from '../services/tradeQueryBuilder.js';
+import { getPoeSessionId } from '../utils/poeSession.js';
 import type { TradeItem, TradeQuery } from '../types/tradeTypes.js';
 import { StatMapper } from '../services/statMapper.js';
 import { ItemRecommendationEngine } from '../services/itemRecommendationEngine.js';
@@ -17,7 +18,7 @@ interface TradeContext {
 
 export async function handleFindWeightedTradeItems(context: TradeContext & { getLuaClient: () => import('../pobLuaBridge.js').PoBLuaApiClient | null; ensureLuaClient: () => Promise<void> }, args: { league: string; slot: string; options?: Record<string, unknown>; limit?: number }) {
   return wrapHandler('find weighted trade items', async () => {
-    if (!process.env.POE_SESSION_ID) throw new Error('find_weighted_trade_items requires POE_SESSION_ID because the official Trade API rejects anonymous weighted searches.');
+    if (!getPoeSessionId()) throw new Error('find_weighted_trade_items needs your POESESSID: paste it in PoB Agent Edition > Options > Trade session ID (or set POE_SESSION_ID). The official Trade API rejects anonymous weighted searches.');
     await context.ensureLuaClient();
     const client = context.getLuaClient();
     if (!client) throw new Error('Lua bridge not active. Load a build first.');

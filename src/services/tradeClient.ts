@@ -1,4 +1,5 @@
 import Bottleneck from 'bottleneck';
+import { getPoeSessionId } from '../utils/poeSession.js';
 import {
   TradeQuery,
   SearchResult,
@@ -164,7 +165,7 @@ export class TradeApiClient {
         'Content-Type': 'application/json',
         'User-Agent': 'pob-mcp-server/1.0',
         // The official Trade API rejects anonymous weighted-sum searches
-        ...(process.env.POE_SESSION_ID ? { Cookie: `POESESSID=${process.env.POE_SESSION_ID}` } : {}),
+        ...(getPoeSessionId() ? { Cookie: `POESESSID=${getPoeSessionId()}` } : {}),
       },
       // The 30s timeout lives on the per-attempt signal: without one, a
       // stalled connection blocked the whole queue (limiter maxConcurrent 1).
