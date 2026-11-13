@@ -41,6 +41,11 @@ export async function handleAtlasGet(context: AtlasContext) {
       ...special.map((n) => "- " + describe(n)),
       "",
       `Small passives: ${nodes.length - special.length}`,
+      "",
+      "Points per mechanic: " + (((r.mechanics as Array<{ name: string; points: number }>) ?? []).map((m) => `${m.name} ${m.points}`).join(", ") || "none"),
+      "",
+      "Combined bonuses:",
+      ...(((r.bonuses as string[]) ?? []).map((b) => "- " + b)),
       `Share link: ${r.link}`,
     ];
     return text(lines.join("\n"));

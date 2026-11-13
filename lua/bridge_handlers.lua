@@ -296,7 +296,11 @@ handlers.atlas_get = function()
   local nodes = {}
   for _, n in ipairs(tab:AllocatedList()) do table.insert(nodes, atlasNode(n)) end
   local AtlasData = LoadModule('Agent/AtlasData')
-  return { ok = true, result = { version = atlas.version, pointsUsed = tab:PointsUsed(), pointsTotal = atlas.points, nodes = nodes, link = AtlasData.encodeLink(atlas, tab.alloc) } }
+  local summary = AtlasData.summary(atlas, tab.alloc)
+  local mechanics, bonuses = {}, {}
+  for _, m in ipairs(summary.mechanics) do table.insert(mechanics, { name = m.name, points = m.points }) end
+  for _, l in ipairs(summary.stats) do table.insert(bonuses, l.text) end
+  return { ok = true, result = { version = atlas.version, pointsUsed = tab:PointsUsed(), pointsTotal = atlas.points, nodes = nodes, mechanics = mechanics, bonuses = bonuses, link = AtlasData.encodeLink(atlas, tab.alloc) } }
 end
 handlers.atlas_search = function(params)
   local tab, atlas = atlasTab()
