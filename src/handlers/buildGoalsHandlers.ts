@@ -92,8 +92,11 @@ export async function handleGetBuildIssues(context: BuildGoalsHandlerContext) {
     }
 
     // Unspent passive points check
+    // Allocated passive nodes, used below to ignore jewel sockets the tree doesn't reach.
+    let allocatedNodes: Set<number> | undefined;
     try {
       const tree = await luaClient.getTree();
+      if (tree?.nodes) allocatedNodes = new Set(tree.nodes.map((n: number | string) => Number(n)));
       if (tree?.nodes && buildLevel > 1) {
         const totalAllocated = tree.nodes.length;
         const ascNodes = tree.ascendancyPointsUsed ?? 0;
@@ -117,7 +120,14 @@ export async function handleGetBuildIssues(context: BuildGoalsHandlerContext) {
       const items = await luaClient.getItems();
       if (Array.isArray(items)) {
         // Find jewel slots that are empty (id === 0)
-        const jewelSlots = items.filter(it => it.slot && /jewel/i.test(it.slot));
+        // Only sockets on allocated passives count; the slot list covers every
+        // socket on the tree ("Jewel 2311" = passive node 2311).
+        const jewelSlots = items.filter(it => {
+          if (!it.slot || !/jewel/i.test(it.slot)) return false;
+          const nodeId = Number(/(\d+)\s*$/.exec(it.slot)?.[1]);
+          if (!allocatedNodes || !Number.isFinite(nodeId)) return it.shown !== false;
+          return allocatedNodes.has(nodeId);
+        });
         const emptyJewelSlots = jewelSlots.filter(it => !it.id || it.id === 0);
         if (emptyJewelSlots.length > 0) {
           issues.push({
